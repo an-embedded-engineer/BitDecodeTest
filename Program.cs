@@ -78,14 +78,6 @@ namespace BitDecodeTest
 
     public class BitDecoder
     {
-        public enum EMsbMode
-        {
-            MSB_7_START,
-            MSB_0_START,
-        }
-
-        public static EMsbMode MsbMode { get; set; } = EMsbMode.MSB_0_START;
-
         public static byte DecodeUInt8BE(byte[] data, ref int offset, int start_bit, int bit_size)
         {
             return (byte)BitDecoder.DecodeBits(data, ref offset, start_bit, bit_size, sizeof(byte));
@@ -106,35 +98,53 @@ namespace BitDecodeTest
             return (ulong)BitDecoder.DecodeBits(data, ref offset, start_bit, bit_size, sizeof(ulong));
         }
 
+        /* MSBモード */
+        public enum EMsbMode
+        {
+            /* MSB:7 to LSB:0 */
+            MSB_7_START,
+            /* MSB:0 to LSB:7 */
+            MSB_0_START,
+        }
+
+        /* MSBモード */
+        public static EMsbMode MsbMode { get; set; } = EMsbMode.MSB_0_START;
+
+        /* バイトあたりのビットサイズ */
+        private const int ByteBitSize = 8;
+
+        /* バイトあたりの最大ビットインデックス : バイトあたりのビットサイズ - 1 */
+        private const int MaxByteBitIndex = ByteBitSize - 1;
+
+        /* 最小バイトサイズリミット : byte型のサイズ */
+        private const int MinByteSizeLimit = sizeof(byte);
+
+        /* 最大バイトサイズリミット : ulong型のサイズ */
+        private const int MaxByteSizeLimit = sizeof(ulong);
+
+        /* 最小ビットサイズ : 1 bit */
+        private const int MinBitSize = 1;
+
+        /* 最大ビットサイズ : 最大バイトサイズリミット * バイトあたりのビットサイズ */
+        private const int MaxBitSize = MaxByteSizeLimit * ByteBitSize;
+
+        /* 最大マスク : ulongの最大値 */
+        private const ulong MaskMax = ulong.MaxValue;
+
+        /* バイト配列の指定オフセット位置、指定ビット位置から、指定ビットサイズ分データを抽出 */
         public static ulong DecodeBits(byte[] data, ref int offset, int start_bit, int bit_size, int max_byte_size)
         {
-            /* バイトあたりのビットサイズ */
-            int byte_bit_size = 8;
-
-            /* バイトあたりの最大ビットインデックス : バイトあたりのビットサイズ - 1 */
-            int max_byte_bit_index = byte_bit_size - 1;
-
-            /* 最小バイトサイズリミット : byte型のサイズ */
-            int min_byte_size_limit = sizeof(byte);
-
-            /* 最大バイトサイズリミット : ulong型のサイズ */
-            int max_byte_size_limit = sizeof(ulong);
-
-            /* 最小ビットサイズ : 1 bit */
-            int min_bit_size = 1;
-
-            /* 最大ビットサイズ : 最大バイトサイズリミット * バイトあたりのビットサイズ */
-            int max_bit_size = max_byte_size_limit * byte_bit_size;
-
-            /* 最大マスク : ulongの最大値 */
-            ulong max_mask = ulong.MaxValue;
-
             // 引数のチェック
-            if (data == null || data.Length == 0) throw new ArgumentNullException(nameof(data));
-            if (offset < 0 || offset >= data.Length) throw new ArgumentOutOfRangeException(nameof(offset));
-            if (start_bit < 0 || start_bit > max_byte_bit_index) throw new ArgumentOutOfRangeException(nameof(start_bit));
-            if (bit_size < min_bit_size || bit_size > max_bit_size) throw new ArgumentOutOfRangeException(nameof(bit_size));
-            if (max_byte_size < min_byte_size_limit || max_byte_size > max_byte_size_limit) throw new ArgumentOutOfRangeException(nameof(max_byte_size));
+            if (data == null || data.Length == 0)
+                throw new ArgumentNullException(nameof(data));
+            if (offset < 0 || offset >= data.Length)
+                throw new ArgumentOutOfRangeException(nameof(offset));
+            if (start_bit < 0 || start_bit > MaxByteBitIndex)
+                throw new ArgumentOutOfRangeException(nameof(start_bit));
+            if (bit_size < MinBitSize || bit_size > MaxBitSize)
+                throw new ArgumentOutOfRangeException(nameof(bit_size));
+            if (max_byte_size < MinByteSizeLimit || max_byte_size > MaxByteSizeLimit)
+                throw new ArgumentOutOfRangeException(nameof(max_byte_size));
 
             /* Byte     : 0               1               2               3               4               5... */
             /* Bit      : 7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0 7... */
@@ -144,93 +154,160 @@ namespace BitDecodeTest
             if (BitDecoder.MsbMode == EMsbMode.MSB_0_START)
             {
                 /* Bitを0スタートにしたい場合は、開始ビットを反転(7 to 0 => 0 to 7) */
-                start_bit = max_byte_bit_index - start_bit;
+                start_bit = BitDecoder.InvertBitIndex(start_bit);
             }
 
             /* 開始ビットを反転(7 to 0 => 0 to 7) */
-            int start_bit_inv = max_byte_bit_index - start_bit;
+            int start_bit_inv = BitDecoder.InvertBitIndex(start_bit);
 
             /* 反転終了ビットインデックス : 反転開始ビット + ビットサイズ - 1 */
             int end_bit_inv_index = (start_bit_inv + bit_size - 1);
 
             /* すべてのビットが開始バイトに収まっているかを確認 ： 反転終了ビットインデックスが最大ビットインデックス以下であれば収まっている */
-            bool is_all_bits_in_byte = (end_bit_inv_index <= max_byte_bit_index) ? true : false;
-
-            /* ビットマスク : ビットサイズが最大ビットサイズの場合はulongの最大値、それ以外は1をビットサイズ分シフトして1を減算 */
-            ulong mask = (bit_size == max_bit_size) ? max_mask : (ulong)((1ul << bit_size) - 1);
-
-            /* すべてのビットが開始バイトに収まっている場合 */
-            if (is_all_bits_in_byte == true)
+            if (end_bit_inv_index <= MaxByteBitIndex)
             {
                 /* 開始バイトを抽出 */
                 byte extract_data = data[offset];
 
-                /* ビットシフトサイズ : 反転終了ビットインデックスを反転(0 to 7 => 7 to 0) */
-                int bit_shift_size = max_byte_bit_index - end_bit_inv_index;
+                /* 終了ビットインデックス : 反転終了ビットインデックスを反転(0 to 7 => 7 to 0) */
+                int end_bit_index = BitDecoder.InvertBitIndex(end_bit_inv_index);
 
                 /* デコード値 : 抽出データをulongにキャストし、シフトサイズ分右シフトし、ビットマスク */
-                ulong result = (ulong)(((ulong)extract_data >> bit_shift_size) & mask);
+                ulong result = ExtractBits((ulong)extract_data, bit_size, end_bit_index);
 
                 /* 反転終了ビットインデックスが7の場合、バイト終端まで読んだため、オフセットを加算、それ以外はまだバイト終端まで読んでいないためオフセット位置を保持 */
-                offset += (end_bit_inv_index == max_byte_bit_index) ? 1 : 0;
+                if (end_bit_inv_index == MaxByteBitIndex)
+                    offset++;
 
                 return result;
             }
             /* 次のバイト以降をまたいでいる場合 */
             else
             {
-                /* 開始位置のバイトは必ず抽出 */
-                int start_byte_size = 1;
-
-                /* 開始バイトのビットサイズ : 開始ビット + 1 */
-                int first_byte_bit_size = start_bit + 1;
-
-                /* 残りビットサイズ : 合計ビットサイズ - 開始バイトのビットサイズ */
-                int remain_bit_size = bit_size - first_byte_bit_size;
-
-                /* 1バイトまるごと使用するバイトサイズ : 残りビットサイズ ÷ バイトあたりのビットサイズ */
-                int all_bits_byte_size = remain_bit_size / byte_bit_size;
-
-                /* 終了バイトのビットサイズ : 残りビットサイズ ÷ バイトあたりのビットサイズの剰余 */
-                int last_byte_bit_size = remain_bit_size % byte_bit_size;
-
-                /* 終了ビット位置のバイトサイズ : 剰余があれば加算、それ以外は加算しない */
-                int last_byte_size = (last_byte_bit_size > 0) ? 1 : 0;
-
-                /* 抽出するバイトサイズ : 開始バイトサイズ(1byte) + 1バイトまるごと使用するバイトサイズ + 終了ビット位置のバイトサイズ(1 or 0byte) */
-                int extract_byte_size = start_byte_size + all_bits_byte_size + last_byte_size;
+                /* 抽出するバイトサイズ 、開始バイトのビットサイズ 、1バイトまるごと使用するバイトサイズ、終了バイトのビットサイズを算出, オフセットサイズを算出 */
+                int extract_byte_size = BitDecoder.CalculateExtractByteSize(start_bit, bit_size, out int first_byte_bit_size, out int all_bits_byte_size, out int last_byte_bit_size, out int offset_size);
 
                 /* 抽出バイトサイズチェック */
-                if ((offset + extract_byte_size - 1) >= data.Length) throw new InvalidOperationException($"Out of Range : offset={offset} extract_bytes={extract_byte_size} data_len{data.Length}");
+                if ((offset + extract_byte_size - 1) >= data.Length)
+                    throw new InvalidOperationException($"Out of Range : offset={offset} extract_bytes={extract_byte_size} data_len{data.Length}");
 
                 /* 開始ビット、終了ビットを含むバイト配列を抽出 : オフセット位置から、抽出バイトサイズ分 */
-                byte[] extract_bytes = data.Skip(offset).Take(extract_byte_size).ToArray();
-
-                /* ulong変換用の配列を用意(8byte) */
-                byte[] tmp_bytes = new byte[sizeof(ulong)];
+                //byte[] extract_bytes = data.Skip(offset).Take(extract_byte_size).ToArray();
+                byte[] extract_bytes = BitDecoder.Extract(data, offset, extract_byte_size);
 
                 /* パディングのバイトサイズ : ulongのサイズ(8byte) - 抽出したバイト配列サイズ */
-                int padding_byte_size = sizeof(ulong) - extract_bytes.Length;
+                int padding_byte_size = MaxByteSizeLimit - extract_bytes.Length;
 
-                /* パディングを追加したバイト配列を生成 : 抽出したバイト配列を、パディングバイトサイズ位置からコピー */
-                Array.Copy(extract_bytes, 0, tmp_bytes, padding_byte_size, extract_bytes.Length);
+                /* ulong変換用のパディングを追加したバイト配列(8byte)を生成 : 抽出したバイト配列を、パディングバイトサイズ位置からコピー */
+                byte[] tmp_bytes = ExtractWithPadding(extract_bytes, 0, MaxByteSizeLimit, padding_byte_size);
 
-                /* バイト配列をulongに変換 : ビッグエンディアンであればそのままて変換、リトルエンディアンであれば反転して変換 */
+                /* バイト配列をulongに変換 : ビッグエンディアンであればそのまま変換、リトルエンディアンであれば反転して変換 */
                 ulong extract_data = (!BitConverter.IsLittleEndian)
                                     ? BitConverter.ToUInt64(tmp_bytes, 0)
                                     : BitConverter.ToUInt64(tmp_bytes.Reverse().ToArray(), 0);
 
-                /* ビットシフトサイズ : 終了バイトのビットサイズが0(バイトの終端)の場合はシフト不要、それ以外の場合はバイトあたりのビットサイズ - 終了バイトのビットサイズ */
-                int bit_shift_size = (last_byte_bit_size == 0) ? 0 : (byte_bit_size - last_byte_bit_size);
+                /* 終了ビットインデックス : 終了バイトのビットサイズが0(バイトの終端)の場合は0、それ以外の場合はバイトあたりのビットサイズ - 終了バイトのビットサイズ */
+                int last_bit_index = (last_byte_bit_size == 0) ? 0 : (ByteBitSize - last_byte_bit_size);
 
-                /* デコード値 : 抽出データをシフトサイズ分右シフトし、ビットマスク */
-                ulong result = (ulong)((extract_data >> bit_shift_size) & mask);
+                /* デコード値 : ビットサイズと最終ビットインデックスを指定してビットデータを抽出(シフト&マスク) */
+                ulong result = ExtractBits(extract_data, bit_size, last_bit_index);
 
-                /* オフセットを加算 : 開始バイトサイズ(1byte) + 1バイトまるごと使用するバイトサイズ */
-                offset += (start_byte_size + all_bits_byte_size);
+                /* オフセットを加算 */
+                offset += offset_size;
 
                 return result;
             }
+        }
+
+        /* 抽出するバイトサイズ 、開始バイトのビットサイズ 、1バイトまるごと使用するバイトサイズ、終了バイトのビットサイズを算出, オフセットサイズを算出 */
+        private static int CalculateExtractByteSize(int start_bit, int bit_size, out int first_byte_bit_size, out int all_bits_byte_size, out int last_byte_bit_size,  out int offset_size)
+        {
+            /* 開始位置のバイトは必ず抽出 */
+            int start_byte_size = 1;
+
+            /* 開始バイトのビットサイズ : 開始ビット + 1 */
+            first_byte_bit_size = start_bit + 1;
+
+            /* 残りビットサイズ : 合計ビットサイズ - 開始バイトのビットサイズ */
+            int remain_bit_size = bit_size - first_byte_bit_size;
+
+            /* 1バイトまるごと使用するバイトサイズ : 残りビットサイズ ÷ バイトあたりのビットサイズ */
+            all_bits_byte_size = remain_bit_size / ByteBitSize;
+
+            /* 終了バイトのビットサイズ : 残りビットサイズ ÷ バイトあたりのビットサイズの剰余 */
+            last_byte_bit_size = remain_bit_size % ByteBitSize;
+
+            /* 終了ビット位置のバイトサイズ : 剰余があれば加算、それ以外は加算しない */
+            int last_byte_size = (last_byte_bit_size > 0) ? 1 : 0;
+
+            /* 抽出するバイトサイズ : 開始バイトサイズ(1byte) + 1バイトまるごと使用するバイトサイズ + 終了ビット位置のバイトサイズ(1 or 0byte) */
+            int extract_byte_size = start_byte_size + all_bits_byte_size + last_byte_size;
+
+            /* オフセットサイズ : 開始バイトサイズ(1byte) + 1バイトまるごと使用するバイトサイズ */
+            offset_size = (start_byte_size + all_bits_byte_size);
+
+            return extract_byte_size;
+        }
+
+        /* バイト配列の指定オフセット位置から指定の長さ分バイト配列を抽出 */
+        private static byte[] Extract(byte[] src, int offset, int length)
+        {
+            /* 抽出バイトサイズチェック */
+            if ((offset + length - 1) >= src.Length)
+                throw new InvalidOperationException($"Out of Range : offset={offset} extract_bytes={length} data_len{src.Length}");
+
+            /* 抽出用バイト配列生成 */
+            byte[] dst = new byte[length];
+
+            /* バイト配列抽出 */
+            Array.Copy(src, offset, dst, 0, length);
+
+            return dst;
+        }
+
+        /* バイト配列の指定オフセット位置から指定の長さ分バイト配列を抽出(先頭に指定バイト分パディングを付加) */
+        private static byte[] ExtractWithPadding(byte[] src, int offset, int length, int padding_byte_size)
+        {
+            /* 抽出バイトサイズチェック */
+            if ((offset + length - 1) >= src.Length)
+                throw new InvalidOperationException($"Out of Range : offset={offset} extract_bytes={length} data_len{src.Length}");
+            /* 抽出バイトサイズチェック */
+            if (padding_byte_size >= src.Length)
+                throw new InvalidOperationException($"Out of Range : padding={padding_byte_size} data_len{src.Length}");
+
+            /* バイト配列抽出 */
+            byte[] dst = new byte[length];
+
+            /* バイト配列抽出(パディング分コピー開始位置をオフセット) */
+            Array.Copy(src, offset, dst, padding_byte_size, length);
+
+            return dst;
+        }
+
+        /* ビットサイズからビットマスク値を算出 */
+        private static ulong GetMask(int bit_size)
+        {
+            /* ビットマスク : ビットサイズが最大ビットサイズの場合はulongの最大値、それ以外は1をビットサイズ分シフトして1を減算 */
+            return (bit_size == MaxBitSize) ? MaskMax : (ulong)((1ul << bit_size) - 1);
+        }
+
+        /* ビットインデックスを反転(7 to 0 <=> 0 to 7) */
+        private static int InvertBitIndex(int bit_index)
+        {
+            /* バイトあたりの最大ビットインデックス - ビットインデックス */
+            return MaxByteBitIndex - bit_index;
+        }
+
+        /* データからビットサイズと最終ビットインデックスを指定してビットデータを抽出(シフト&マスク) */
+        private static ulong ExtractBits(ulong data, int bit_size, int last_bit_index)
+        {
+            /* ビットサイズからビットマスク値を算出 */
+            ulong mask = BitDecoder.GetMask(bit_size);
+
+            /* 抽出ビットデータ : データを最終ビットインデックス分右シフトし、ビットマスク */
+            ulong result = (ulong)((data >> last_bit_index) & mask);
+
+            return result;
         }
     }
 }
