@@ -8,15 +8,35 @@ namespace BitDecodeTest
         {
             byte[] data = { 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0 };
 
-            BitDecodeTestUInt8(data, 3, 5, 5);
+            /* MSBを0スタートに変更（デフォルトは7スタート) */
+            BitDecoder.MsbMode = BitDecoder.EMsbMode.MSB_0_START;
 
-            BitDecodeTestUInt16(data, 4, 5, 12);
+            /* MSGが7スタートの場合(各バイトの一番左のビットインデックスが7) */
+            if (BitDecoder.MsbMode == BitDecoder.EMsbMode.MSB_7_START)
+            {
+                BitDecodeTestUInt8(data, 3, 5, 5);
 
-            BitDecodeTestUInt32(data, 1, 3, 30);
+                BitDecodeTestUInt16(data, 4, 5, 12);
 
-            BitDecodeTestUInt64(data, 0, 7, 50);
+                BitDecodeTestUInt32(data, 1, 3, 30);
 
-            BitDecodeTestUInt64(data, 0, 7, 64);
+                BitDecodeTestUInt64(data, 0, 7, 50);
+
+                BitDecodeTestUInt64(data, 0, 7, 64);
+            }
+            /* MSGが0スタートの場合(各バイトの一番左のビットインデックスが0) */
+            else
+            {
+                BitDecodeTestUInt8(data, 3, 2, 5);
+
+                BitDecodeTestUInt16(data, 4, 2, 12);
+
+                BitDecodeTestUInt32(data, 1, 7, 30);
+
+                BitDecodeTestUInt64(data, 0, 0, 50);
+
+                BitDecodeTestUInt64(data, 0, 0, 64);
+            }
         }
 
         public static void BitDecodeTestUInt8(byte[] data, int offset, int start_bit, int bit_size)
@@ -50,6 +70,14 @@ namespace BitDecodeTest
 
     public class BitDecoder
     {
+        public enum EMsbMode
+        {
+            MSB_7_START,
+            MSB_0_START,
+        }
+
+        public static EMsbMode MsbMode { get; set; } = EMsbMode.MSB_0_START;
+
         public static byte DecodeUInt8BE(byte[] data, ref int offset, int start_bit, int bit_size)
         {
             return (byte)BitDecoder.DecodeBits(data, ref offset, start_bit, bit_size, sizeof(byte));
@@ -103,6 +131,13 @@ namespace BitDecodeTest
             /* Byte     : 0               1               2               3               4               5... */
             /* Bit      : 7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0 7... */
             /* Bit(inv) : 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0... */
+
+            /* MSBが0スタートの場合 */
+            if (BitDecoder.MsbMode == EMsbMode.MSB_0_START)
+            {
+                /* Bitを0スタートにしたい場合は、開始ビットを反転(7 to 0 => 0 to 7) */
+                start_bit = max_byte_bit_index - start_bit;
+            }
 
             /* 開始ビットを反転(7 to 0 => 0 to 7) */
             int start_bit_inv = max_byte_bit_index - start_bit;
