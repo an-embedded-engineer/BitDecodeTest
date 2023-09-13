@@ -72,22 +72,37 @@ namespace BitDecodeTest
 
         public static ulong DecodeBits(byte[] data, ref int offset, int start_bit, int bit_size, int max_byte_size)
         {
-            // 引数のチェック
-            if (data == null || data.Length == 0) throw new ArgumentNullException(nameof(data));
-            if (offset < 0 || offset >= data.Length) throw new ArgumentOutOfRangeException(nameof(offset));
-            if (start_bit < 0 || start_bit > 7) throw new ArgumentOutOfRangeException(nameof(start_bit));
-            if (bit_size < 1 || bit_size > 64) throw new ArgumentOutOfRangeException(nameof(bit_size));
-            if (max_byte_size < 1 || max_byte_size > 8) throw new ArgumentOutOfRangeException(nameof(max_byte_size));
-
-            /* Byte     : 0               1               2               3               4               5... */
-            /* Bit      : 7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0 7... */
-            /* Bit(inv) : 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0... */
-
             /* バイトあたりのビットサイズ */
             int byte_bit_size = 8;
 
             /* バイトあたりの最大ビットインデックス : バイトあたりのビットサイズ - 1 */
             int max_byte_bit_index = byte_bit_size - 1;
+
+            /* 最小バイトサイズリミット : byte型のサイズ */
+            int min_byte_size_limit = sizeof(byte);
+
+            /* 最大バイトサイズリミット : ulong型のサイズ */
+            int max_byte_size_limit = sizeof(ulong);
+
+            /* 最小ビットサイズ : 1 bit */
+            int min_bit_size = 1;
+
+            /* 最大ビットサイズ : 最大バイトサイズリミット * バイトあたりのビットサイズ */
+            int max_bit_size = max_byte_size_limit * byte_bit_size;
+
+            /* 最大マスク : ulongの最大値 */
+            ulong max_mask = ulong.MaxValue;
+
+            // 引数のチェック
+            if (data == null || data.Length == 0) throw new ArgumentNullException(nameof(data));
+            if (offset < 0 || offset >= data.Length) throw new ArgumentOutOfRangeException(nameof(offset));
+            if (start_bit < 0 || start_bit > max_byte_bit_index) throw new ArgumentOutOfRangeException(nameof(start_bit));
+            if (bit_size < min_bit_size || bit_size > max_bit_size) throw new ArgumentOutOfRangeException(nameof(bit_size));
+            if (max_byte_size < min_byte_size_limit || max_byte_size > max_byte_size_limit) throw new ArgumentOutOfRangeException(nameof(max_byte_size));
+
+            /* Byte     : 0               1               2               3               4               5... */
+            /* Bit      : 7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0 7 6 5 4 3 2 1 0 7... */
+            /* Bit(inv) : 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0... */
 
             /* 開始ビットを反転(7 to 0 => 0 to 7) */
             int start_bit_inv = max_byte_bit_index - start_bit;
@@ -98,6 +113,9 @@ namespace BitDecodeTest
             /* すべてのビットが開始バイトに収まっているかを確認 ： 反転終了ビットインデックスが最大ビットインデックス以下であれば収まっている */
             bool is_all_bits_in_byte = (end_bit_inv_index <= max_byte_bit_index) ? true : false;
 
+            /* ビットマスク : ビットサイズが最大ビットサイズの場合はulongの最大値、それ以外は1をビットサイズ分シフトして1を減算 */
+            ulong mask = (bit_size == max_bit_size) ? max_mask : (ulong)((1ul << bit_size) - 1);
+
             /* すべてのビットが開始バイトに収まっている場合 */
             if (is_all_bits_in_byte == true)
             {
@@ -106,9 +124,6 @@ namespace BitDecodeTest
 
                 /* ビットシフトサイズ : 反転終了ビットインデックスを反転(0 to 7 => 7 to 0) */
                 int bit_shift_size = max_byte_bit_index - end_bit_inv_index;
-
-                /* ビットマスク : ビットサイズが64ビットの場合はulongの最大値、それ以外は1をビットサイズ分シフトして1を減算 */
-                ulong mask = (bit_size == sizeof(ulong) * byte_bit_size) ? ulong.MaxValue : (ulong)((1ul << bit_size) - 1);
 
                 /* デコード値 : 抽出データをulongにキャストし、シフトサイズ分右シフトし、ビットマスク */
                 ulong result = (ulong)(((ulong)extract_data >> bit_shift_size) & mask);
@@ -134,7 +149,7 @@ namespace BitDecodeTest
                 int all_bits_byte_size = remain_bit_size / byte_bit_size;
 
                 /* 終了バイトのビットサイズ : 残りビットサイズ ÷ バイトあたりのビットサイズの剰余 */
-                int last_byte_bit_size = remain_bit_size % 8;
+                int last_byte_bit_size = remain_bit_size % byte_bit_size;
 
                 /* 終了ビット位置のバイトサイズ : 剰余があれば加算、それ以外は加算しない */
                 int last_byte_size = (last_byte_bit_size > 0) ? 1 : 0;
@@ -164,9 +179,6 @@ namespace BitDecodeTest
 
                 /* ビットシフトサイズ : 終了バイトのビットサイズが0(バイトの終端)の場合はシフト不要、それ以外の場合はバイトあたりのビットサイズ - 終了バイトのビットサイズ */
                 int bit_shift_size = (last_byte_bit_size == 0) ? 0 : (byte_bit_size - last_byte_bit_size);
-
-                /* ビットマスク : ビットサイズが64ビットの場合はulongの最大値、それ以外は1をビットサイズ分シフトして1を減算 */
-                ulong mask = (bit_size == (sizeof(ulong) * byte_bit_size)) ? ulong.MaxValue : (ulong)((1ul << bit_size) - 1);
 
                 /* デコード値 : 抽出データをシフトサイズ分右シフトし、ビットマスク */
                 ulong result = (ulong)((extract_data >> bit_shift_size) & mask);
