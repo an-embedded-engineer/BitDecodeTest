@@ -14,11 +14,15 @@ namespace BitDecodeTest
             /* MSGが7スタートの場合(各バイトの一番左のビットインデックスが7) */
             if (BitDecoder.MsbMode == BitDecoder.EMsbMode.MSB_7_START)
             {
+                BitDecodeTestUInt8(data, 1, 5, 4);
+
                 BitDecodeTestUInt8(data, 3, 5, 5);
 
                 BitDecodeTestUInt16(data, 4, 5, 12);
 
                 BitDecodeTestUInt32(data, 1, 3, 30);
+
+                BitDecodeTestUInt32(data, 3, 2, 21);
 
                 BitDecodeTestUInt64(data, 0, 7, 50);
 
@@ -27,11 +31,15 @@ namespace BitDecodeTest
             /* MSGが0スタートの場合(各バイトの一番左のビットインデックスが0) */
             else
             {
+                BitDecodeTestUInt8(data, 1, 2, 4);
+
                 BitDecodeTestUInt8(data, 3, 2, 5);
 
                 BitDecodeTestUInt16(data, 4, 2, 12);
 
                 BitDecodeTestUInt32(data, 1, 7, 30);
+
+                BitDecodeTestUInt32(data, 3, 5, 21);
 
                 BitDecodeTestUInt64(data, 0, 0, 50);
 
