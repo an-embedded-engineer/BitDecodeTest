@@ -192,14 +192,10 @@ namespace BitDecodeTest
                     throw new InvalidOperationException($"Out of Range : offset={offset} extract_bytes={extract_byte_size} data_len{data.Length}");
 
                 /* 開始ビット、終了ビットを含むバイト配列を抽出 : オフセット位置から、抽出バイトサイズ分 */
-                //byte[] extract_bytes = data.Skip(offset).Take(extract_byte_size).ToArray();
                 byte[] extract_bytes = BitDecoder.Extract(data, offset, extract_byte_size);
 
-                /* パディングのバイトサイズ : ulongのサイズ(8byte) - 抽出したバイト配列サイズ */
-                int padding_byte_size = MaxByteSizeLimit - extract_bytes.Length;
-
-                /* ulong変換用のパディングを追加したバイト配列(8byte)を生成 : 抽出したバイト配列を、パディングバイトサイズ位置からコピー */
-                byte[] tmp_bytes = ExtractWithPadding(extract_bytes, 0, MaxByteSizeLimit, padding_byte_size);
+                /* ulong変換用のパディングを追加したバイト配列(8byte)を生成 */
+                byte[] tmp_bytes = ExtractWithPaddingOffset(extract_bytes, 0, MaxByteSizeLimit);
 
                 /* バイト配列をulongに変換 : ビッグエンディアンであればそのまま変換、リトルエンディアンであれば反転して変換 */
                 ulong extract_data = (!BitConverter.IsLittleEndian)
@@ -252,10 +248,6 @@ namespace BitDecodeTest
         /* バイト配列の指定オフセット位置から指定の長さ分バイト配列を抽出 */
         private static byte[] Extract(byte[] src, int offset, int length)
         {
-            /* 抽出バイトサイズチェック */
-            if ((offset + length - 1) >= src.Length)
-                throw new InvalidOperationException($"Out of Range : offset={offset} extract_bytes={length} data_len{src.Length}");
-
             /* 抽出用バイト配列生成 */
             byte[] dst = new byte[length];
 
@@ -265,21 +257,17 @@ namespace BitDecodeTest
             return dst;
         }
 
-        /* バイト配列の指定オフセット位置から指定の長さ分バイト配列を抽出(先頭に指定バイト分パディングを付加) */
-        private static byte[] ExtractWithPadding(byte[] src, int offset, int length, int padding_byte_size)
+        /* 入力バイト配列の指定オフセット位置から末尾までのデータを、指定の長さのバイト配列にコピー(先頭に不足分のパディングを付加) */
+        private static byte[] ExtractWithPaddingOffset(byte[] src, int offset, int length)
         {
-            /* 抽出バイトサイズチェック */
-            if ((offset + length - 1) >= src.Length)
-                throw new InvalidOperationException($"Out of Range : offset={offset} extract_bytes={length} data_len{src.Length}");
-            /* 抽出バイトサイズチェック */
-            if (padding_byte_size >= src.Length)
-                throw new InvalidOperationException($"Out of Range : padding={padding_byte_size} data_len{src.Length}");
-
             /* バイト配列抽出 */
             byte[] dst = new byte[length];
 
+            /* パディングのバイトサイズ : 出力配列バイトサイズ - (入力バイト配列サイズ - オフセットサイズ) */
+            int padding_byte_size = length - (src.Length - offset);
+
             /* バイト配列抽出(パディング分コピー開始位置をオフセット) */
-            Array.Copy(src, offset, dst, padding_byte_size, length);
+            Array.Copy(src, offset, dst, padding_byte_size, src.Length);
 
             return dst;
         }
