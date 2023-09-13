@@ -108,7 +108,7 @@ namespace BitDecodeTest
                 int bit_shift_size = max_byte_bit_index - end_bit_inv_index;
 
                 /* ビットマスク : ビットサイズが64ビットの場合はulongの最大値、それ以外は1をビットサイズ分シフトして1を減算 */
-                ulong mask = (bit_size == sizeof(ulong)) ? ulong.MaxValue : (ulong)((1ul << bit_size) - 1);
+                ulong mask = (bit_size == sizeof(ulong) * byte_bit_size) ? ulong.MaxValue : (ulong)((1ul << bit_size) - 1);
 
                 /* デコード値 : 抽出データをulongにキャストし、シフトサイズ分右シフトし、ビットマスク */
                 ulong result = (ulong)(((ulong)extract_data >> bit_shift_size) & mask);
